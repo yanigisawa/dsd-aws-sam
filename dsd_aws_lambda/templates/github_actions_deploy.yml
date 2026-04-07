@@ -1,0 +1,53 @@
+name: Deploy Django to AWS Lambda
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${% templatetag openvariable %} secrets.AWS_ROLE_ARN {% templatetag closevariable %}
+          aws-region: {{ aws_region }}
+
+      - name: SAM build
+        run: sam build
+
+      - name: SAM deploy
+        run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+
+      - name: Run migrations
+        run: |
+          aws lambda invoke \
+            --function-name {{ stack_name }}-DjangoFunction \
+            --payload '{"manage": "migrate --noinput"}' \
+            /dev/stdout
+
+      - name: Collect static files
+        run: |
+          aws lambda invoke \
+            --function-name {{ stack_name }}-DjangoFunction \
+            --payload '{"manage": "collectstatic --noinput"}' \
+            /dev/stdout

@@ -1,0 +1,6 @@
+Options for dsd-aws-lambda:
+  --aws-region AWS_REGION
+  --aws-stack-name AWS_STACK_NAME
+  --db-engine {sqlite,postgres}
+  --architecture {arm64,x86_64}
+  --stage STAGE

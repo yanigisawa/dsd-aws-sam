@@ -1,0 +1,16 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "{{ stack_name }}"
+region = "{{ aws_region }}"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+resolve_s3 = false
+s3_bucket = "dsd-aws-lambda-{{slug}}"
+parameter_overrides = "Stage={{ stage }}"
+
+[default.build.parameters]
+use_container = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"

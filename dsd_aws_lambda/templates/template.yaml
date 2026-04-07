@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  {{ stack_name }} - Django application deployed on AWS Lambda via Mangum.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+
+Parameters:
+  Stage:
+    Type: String
+    Default: { { stage } }
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+Resources:
+  DjangoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-DjangoFunction"
+      Handler: lambda_handler.handler
+      Runtime: python3.12
+      CodeUri: .
+      Architectures:
+        - { { architecture } }
+      Environment:
+        Variables:
+          ON_AWS_LAMBDA: "1"
+          DEBUG: "False"
+          DJANGO_SECRET_KEY: !Sub "{% templatetag openvariable %}resolve:secretsmanager:${DjangoSecretKey}{% templatetag closevariable %}"
+          STATIC_FILES_BUCKET: !Ref StaticFilesBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref StaticFilesBucket
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DjangoSecretKey
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - "*"
+
+  StaticFilesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-static-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  StaticFilesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticFilesBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "${StaticFilesBucket.Arn}/static/*"
+
+  DjangoSecretKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}-django-secret-key"
+      Description: "Django SECRET_KEY for the Lambda deployment"
+      GenerateSecretString:
+        ExcludePunctuation: false
+        PasswordLength: 50
+
+Outputs:
+  ApiUrl:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
+  FunctionName:
+    Description: "Lambda function name (for management commands)"
+    Value: !Ref DjangoFunction
+  StaticBucket:
+    Description: "S3 bucket for static files"
+    Value: !Ref StaticFilesBucket

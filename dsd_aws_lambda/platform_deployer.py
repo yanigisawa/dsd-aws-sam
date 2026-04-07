@@ -1,0 +1,354 @@
+"""Manages all AWS Lambda-specific aspects of the deployment process.
+
+Uses Mangum as the ASGI-to-Lambda adapter and AWS SAM as the deployment tooling.
+"""
+
+import json
+import shlex
+from pathlib import Path
+from uuid import uuid4
+from . import deploy_messages as platform_msgs
+from .cli import validate_stack_name
+from .plugin_config import plugin_config
+
+from django_simple_deploy.management.commands.utils import plugin_utils
+from django_simple_deploy.management.commands.utils.plugin_utils import dsd_config
+from django_simple_deploy.management.commands.utils.command_errors import (
+    DSDCommandError,
+)
+
+
+class PlatformDeployer:
+    """Perform the initial deployment to AWS Lambda.
+
+    If --automate-all is used, carry out an actual deployment.
+    If not, do all configuration work so the user only has to commit changes
+    and run `sam build && sam deploy`.
+    """
+
+    def __init__(self):
+        self.templates_path = Path(__file__).parent / "templates"
+        self.deployed_url = ""
+
+    # --- Public methods ---
+
+    def deploy(self, *args, **options):
+        """Coordinate the overall configuration and deployment."""
+        plugin_utils.write_output(
+            "\nConfiguring project for deployment to AWS Lambda..."
+        )
+
+        self._validate_platform()
+        self._set_stack_name()
+
+        self._add_lambda_handler()
+        self._add_sam_template()
+        self._add_samconfig()
+        self._add_static_dir()
+        self._modify_settings()
+        self._add_requirements()
+        self._ensure_asgi()
+
+        self._conclude_automate_all()
+        self._show_success_message()
+
+    # --- Helper methods for deploy() ---
+
+    def _validate_platform(self):
+        """Make sure the local environment supports deployment to AWS Lambda."""
+        if dsd_config.unit_testing:
+            self.deployed_project_name = dsd_config.deployed_project_name
+            return
+
+        self._check_lambda_settings()
+        self._validate_aws_cli()
+        self._validate_sam_cli()
+        self._check_docker()
+
+    def _set_stack_name(self):
+        """Determine the CloudFormation stack name."""
+        if plugin_config.aws_stack_name:
+            self.stack_name = plugin_config.aws_stack_name
+        else:
+            project_name = dsd_config.local_project_name.replace("_", "-")
+            self.stack_name = f"{project_name}-{plugin_config.stage}"
+
+        # Defense in depth: validate again at deploy-time before shell usage.
+        validate_stack_name(self.stack_name)
+
+        plugin_utils.write_output(
+            platform_msgs.stack_name_msg(self.stack_name)
+        )
+
+    def _add_lambda_handler(self):
+        """Add the Mangum-based Lambda handler."""
+        template_path = self.templates_path / "lambda_handler.py"
+        context = {
+            "django_project_name": dsd_config.local_project_name,
+        }
+        contents = plugin_utils.get_template_string(template_path, context)
+        path = dsd_config.project_root / "lambda_handler.py"
+        plugin_utils.add_file(path, contents)
+
+    def _add_sam_template(self):
+        """Add the SAM/CloudFormation template."""
+        if plugin_config.db_engine == "postgres":
+            template_name = "template_with_rds.yaml"
+        else:
+            template_name = "template.yaml"
+
+        template_path = self.templates_path / template_name
+        context = {
+            "stack_name": self.stack_name,
+            "architecture": plugin_config.architecture,
+            "stage": plugin_config.stage,
+        }
+        contents = plugin_utils.get_template_string(template_path, context)
+        path = dsd_config.project_root / "template.yaml"
+        plugin_utils.add_file(path, contents)
+
+    def _add_samconfig(self):
+        """Add the SAM configuration file."""
+        template_path = self.templates_path / "samconfig.toml"
+        context = {
+            "stack_name": self.stack_name,
+            "aws_region": plugin_config.aws_region,
+            "stage": plugin_config.stage,
+            "db_engine": plugin_config.db_engine,
+        }
+        contents = plugin_utils.get_template_string(template_path, context)
+        contents = plugin_utils.remove_doubled_blank_lines(contents)
+        path = dsd_config.project_root / "samconfig.toml"
+        plugin_utils.add_file(path, contents)
+
+    def _add_static_dir(self):
+        """Ensure a static/ directory exists with a placeholder."""
+        static_dir = dsd_config.project_root / "static"
+        plugin_utils.add_dir(static_dir)
+
+        placeholder = static_dir / ".gitkeep"
+        if not placeholder.exists():
+            placeholder.write_text("")
+            plugin_utils.write_output(f"    Added {placeholder}")
+
+    def _modify_settings(self):
+        """Add AWS Lambda-specific settings."""
+        template_path = self.templates_path / "settings.py"
+        context = {
+            "aws_region": plugin_config.aws_region,
+            "db_engine": plugin_config.db_engine,
+        }
+        plugin_utils.modify_settings_file(template_path, context)
+
+    def _add_requirements(self):
+        """Add requirements for deploying to AWS Lambda."""
+        requirements = ["mangum", "django-storages", "boto3"]
+        if plugin_config.db_engine == "postgres":
+            requirements.extend(["psycopg2-binary", "dj-database-url"])
+        plugin_utils.add_packages(requirements)
+
+    def _ensure_asgi(self):
+        """Ensure the project has an ASGI application module.
+
+        Django projects created with startproject include asgi.py by default,
+        but we verify it exists since Mangum requires it.
+        """
+        # The asgi.py is typically at <project_name>/asgi.py.
+        # If settings_path is <root>/<project>/settings.py, asgi.py is in the
+        # same directory.
+        if dsd_config.nanodjango_project:
+            return
+
+        project_dir = dsd_config.settings_path.parent
+        asgi_path = project_dir / "asgi.py"
+        if not asgi_path.exists():
+            plugin_utils.write_output(
+                "\n  Warning: asgi.py not found. Mangum requires an ASGI application."
+            )
+            plugin_utils.write_output(
+                f"  Expected at: {asgi_path}"
+            )
+            plugin_utils.write_output(
+                "  Django's `startproject` creates this by default."
+            )
+        else:
+            plugin_utils.write_output(f"\n  Found asgi.py at {asgi_path}")
+
+    def _conclude_automate_all(self):
+        """Finish automating the deployment to AWS Lambda."""
+        if not dsd_config.automate_all:
+            if plugin_config.db_engine == "sqlite":
+                plugin_utils.write_output(platform_msgs.sqlite_warning)
+            return
+
+        plugin_utils.commit_changes()
+
+        # sam build
+        plugin_utils.write_output("\n  Building Lambda package with SAM...")
+        cmd = "sam build"
+        try:
+            plugin_utils.run_slow_command(cmd)
+        except Exception:
+            raise DSDCommandError(platform_msgs.sam_build_failed)
+
+        # sam deploy
+        plugin_utils.write_output("\n  Deploying to AWS with SAM...")
+        cmd = "sam deploy --no-confirm-changeset --no-fail-on-empty-changeset"
+        try:
+            plugin_utils.run_slow_command(cmd)
+        except Exception:
+            raise DSDCommandError(platform_msgs.sam_deploy_failed)
+
+        # Get the deployed URL from stack outputs.
+        self._get_deployed_url()
+
+        # Run post-deployment commands.
+        self._run_post_deploy_commands()
+
+    def _get_deployed_url(self):
+        """Get the deployed URL from CloudFormation stack outputs."""
+        quoted_stack_name = shlex.quote(self.stack_name)
+        cmd = (
+            f"aws cloudformation describe-stacks"
+            f" --stack-name {quoted_stack_name}"
+            f" --query \"Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue\""
+            f" --output text"
+        )
+        output = plugin_utils.run_quick_command(cmd)
+        url = output.stdout.decode().strip()
+        if url:
+            self.deployed_url = url
+            plugin_utils.write_output(f"\n  Deployed URL: {self.deployed_url}")
+        else:
+            self.deployed_url = "(URL not available -- check CloudFormation console)"
+
+    def _run_post_deploy_commands(self):
+        """Run collectstatic and migrate via Lambda invocation."""
+        function_name = f"{self.stack_name}-DjangoFunction"
+        quoted_function_name = shlex.quote(function_name)
+
+        # collectstatic
+        plugin_utils.write_output("\n  Running collectstatic...")
+        cmd = (
+            f'aws lambda invoke'
+            f' --function-name {quoted_function_name}'
+            f' --payload \'{{"manage": "collectstatic --noinput"}}\''
+            f' /dev/stdout'
+        )
+        output = plugin_utils.run_quick_command(cmd)
+        plugin_utils.write_output(output)
+
+        # migrate
+        plugin_utils.write_output("\n  Running migrate...")
+        cmd = (
+            f'aws lambda invoke'
+            f' --function-name {quoted_function_name}'
+            f' --payload \'{{"manage": "migrate --noinput"}}\''
+            f' /dev/stdout'
+        )
+        output = plugin_utils.run_quick_command(cmd)
+        plugin_utils.write_output(output)
+
+    def _show_success_message(self):
+        """After a successful run, show a message about what to do next."""
+        if dsd_config.automate_all:
+            if plugin_config.db_engine == "postgres":
+                msg = platform_msgs.success_msg_with_rds(self.deployed_url)
+            else:
+                msg = platform_msgs.success_msg_automate_all(self.deployed_url)
+        else:
+            msg = platform_msgs.success_msg(log_output=dsd_config.log_output)
+        plugin_utils.write_output(msg)
+
+    # --- Helper methods for _validate_platform() ---
+
+    def _check_lambda_settings(self):
+        """Check to see if an AWS Lambda settings block already exists."""
+        start_line = "# AWS Lambda settings."
+        plugin_utils.check_settings(
+            "AWS Lambda",
+            start_line,
+            platform_msgs.lambda_settings_found,
+            platform_msgs.cant_overwrite_settings,
+        )
+
+    def _validate_aws_cli(self):
+        """Make sure the AWS CLI is installed and configured."""
+        # Check AWS CLI is installed.
+        cmd = "aws --version"
+        try:
+            output = plugin_utils.run_quick_command(cmd)
+        except FileNotFoundError:
+            raise DSDCommandError(platform_msgs.aws_cli_not_installed)
+
+        if output.returncode:
+            raise DSDCommandError(platform_msgs.aws_cli_not_installed)
+
+        plugin_utils.log_info(output)
+
+        # Check AWS CLI is configured (has credentials).
+        cmd = "aws sts get-caller-identity"
+        output = plugin_utils.run_quick_command(cmd)
+        if output.returncode:
+            raise DSDCommandError(platform_msgs.aws_cli_not_configured)
+
+        identity = json.loads(output.stdout.decode())
+        account_id = identity.get("Account", "unknown")
+        msg = f"  Authenticated to AWS account: {account_id}"
+        plugin_utils.write_output(msg)
+
+    def _validate_sam_cli(self):
+        """Make sure the SAM CLI is installed."""
+        cmd = "sam --version"
+        try:
+            output = plugin_utils.run_quick_command(cmd)
+        except FileNotFoundError:
+            raise DSDCommandError(platform_msgs.sam_cli_not_installed)
+
+        if output.returncode:
+            raise DSDCommandError(platform_msgs.sam_cli_not_installed)
+
+        plugin_utils.log_info(output)
+        msg = f"  SAM CLI: {output.stdout.decode().strip()}"
+        plugin_utils.write_output(msg)
+
+    def _check_docker(self):
+        """Check if Docker is available (recommended but not required)."""
+        cmd = "docker info"
+        try:
+            output = plugin_utils.run_quick_command(cmd)
+            if output.returncode:
+                plugin_utils.write_output(platform_msgs.docker_not_available)
+            else:
+                plugin_utils.write_output("  Docker is available.")
+        except FileNotFoundError:
+            plugin_utils.write_output(platform_msgs.docker_not_available)
+
+    def create_bucket(self, bucket_name):
+        """Create an S3 bucket."""
+        cmd = f"aws s3 mb s3://{bucket_name}"
+        output = plugin_utils.run_quick_command(cmd)
+        if output.returncode:
+            raise DSDCommandError(
+                platform_msgs.bucket_creation_failed(bucket_name)
+            )
+        plugin_utils.log_info(output)
+        plugin_utils.write_output(f"  Created S3 bucket: {bucket_name}")
+
+    def bucket_exists(self, bucket_name):
+        """Check if an S3 bucket exists."""
+        cmd = f"aws s3 ls s3://{bucket_name}"
+        output = plugin_utils.run_quick_command(cmd)
+        return output.returncode == 0
+
+    def get_or_create_s3_bucket(self, explicit_bucket=None):
+        if explicit_bucket:
+            bucket = explicit_bucket  # Use user-provided
+        else:
+            bucket = f"dsd-aws-lambda-{str(uuid4())[:8]}"  # Generate unique bucket name
+
+        # Check if bucket exists
+        if not self.bucket_exists(bucket):
+            self.create_bucket(bucket)  # Create if needed
+
+        return bucket

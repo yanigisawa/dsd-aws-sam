@@ -1,0 +1,37 @@
+[MAIN]
+# Use multiple processes to speed up Pylint (0 = auto-detect CPU count)
+jobs=0
+
+[MESSAGES CONTROL]
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    too-many-instance-attributes,
+    too-many-arguments,
+    too-many-positional-arguments,
+
+[FORMAT]
+# Match the project's flake8 max-line-length
+max-line-length=200
+
+[BASIC]
+# Allow common short names in addition to the pylint defaults
+good-names=i,j,k,x,y,f,db,pk,e,ex,_
+
+[SIMILARITIES]
+# Minimum lines required before a block is flagged as duplicate code
+min-similarity-lines=10
+# Ignore imports when checking for duplicates
+ignore-imports=yes
+
+[DESIGN]
+# Reasonable limits before warnings about complexity
+max-args=8
+max-attributes=10
+max-bool-expr=5
+max-branches=15
+max-locals=20
+max-returns=6
+max-statements=60
