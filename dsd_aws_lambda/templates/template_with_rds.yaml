@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
   {{ stack_name }} - Django application deployed on AWS Lambda with RDS PostgreSQL.
@@ -11,7 +11,7 @@ Globals:
 Parameters:
   Stage:
     Type: String
-    Default: {{ stage }}
+    Default: { { stage } }
     AllowedValues:
       - dev
       - staging
@@ -197,7 +197,7 @@ Resources:
       Runtime: python3.12
       CodeUri: .
       Architectures:
-        - {{ architecture }}
+        - { { architecture } }
       VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroup
@@ -234,7 +234,7 @@ Resources:
       StageName: !Ref Stage
       CorsConfiguration:
         AllowOrigins:
-          - "*"
+          - !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
         AllowMethods:
           - GET
           - POST

@@ -13,8 +13,7 @@ Usage:
 
 import json
 import os
-import subprocess
-import sys
+import shlex
 
 from mangum import Mangum
 
@@ -50,7 +49,7 @@ def _run_management_command(command_string):
     from django.core.management import call_command
     from io import StringIO
 
-    args = command_string.split()
+    args = shlex.split(command_string)
     stdout = StringIO()
     stderr = StringIO()
 

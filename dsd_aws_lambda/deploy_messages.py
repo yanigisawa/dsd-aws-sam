@@ -130,16 +130,6 @@ def invalid_stack_name(stack_name):
     return msg
 
 
-def s3_bucket_msg(bucket_name):
-    """Display the S3 bucket being used for static files."""
-    msg = dedent(
-        f"""
-        Using S3 bucket for static files: {bucket_name}
-    """
-    )
-    return msg
-
-
 def success_msg(log_output=""):
     """Success message, for configuration-only run."""
     msg = dedent(

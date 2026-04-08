@@ -16,7 +16,7 @@ def dsd_get_plugin_config():
 @django_simple_deploy.hookimpl
 def dsd_get_plugin_cli(parser):
     """Get plugin's CLI extension."""
-    plugin_cli = PluginCLI(parser)
+    return PluginCLI(parser)
 
 
 @django_simple_deploy.hookimpl
