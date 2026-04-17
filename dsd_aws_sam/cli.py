@@ -20,9 +20,9 @@ class PluginCLI:
 
     def __init__(self, parser):
         """Add plugin-specific args."""
-        group_desc = "Full documentation: https://github.com/django-simple-deploy/dsd-aws-lambda"
+        group_desc = "Full documentation: https://github.com/django-simple-deploy/dsd-aws-sam"
         plugin_group = parser.add_argument_group(
-            title="Options for dsd-aws-lambda",
+            title="Options for dsd-aws-sam",
             description=group_desc,
         )
 

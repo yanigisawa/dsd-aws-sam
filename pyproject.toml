@@ -3,9 +3,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dsd-aws-lambda"
+name = "dsd-aws-sam"
 version = "0.1.0"
-description = "A plugin for django-simple-deploy, supporting deployments to AWS Lambda."
+description = "A plugin for django-simple-deploy, supporting deployments using AWS SAM."
 readme = "README.md"
 
 authors = [
@@ -47,13 +47,13 @@ dev = [
 ]
 
 [project.urls]
-"Documentation" = "https://github.com/django-simple-deploy/dsd-aws-lambda"
-"GitHub" = "https://github.com/django-simple-deploy/dsd-aws-lambda"
-"Changelog" = "https://github.com/django-simple-deploy/dsd-aws-lambda/blob/main/CHANGELOG.md"
+"Documentation" = "https://github.com/django-simple-deploy/dsd-aws-sam"
+"GitHub" = "https://github.com/django-simple-deploy/dsd-aws-sam"
+"Changelog" = "https://github.com/django-simple-deploy/dsd-aws-sam/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 packages = [
-    "dsd_aws_lambda",
-    "dsd_aws_lambda.templates",
+    "dsd_aws_sam",
+    "dsd_aws_sam.templates",
 ]
 include-package-data = true

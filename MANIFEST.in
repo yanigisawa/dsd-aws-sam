@@ -1,1 +1,1 @@
-recursive-include dsd_aws_lambda/templates *
+recursive-include dsd_aws_sam/templates *

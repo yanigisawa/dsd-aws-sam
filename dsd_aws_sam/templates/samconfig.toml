@@ -6,7 +6,7 @@ region = "{{ aws_region }}"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
 resolve_s3 = false
-s3_bucket = "dsd-aws-lambda-{{slug}}"
+s3_bucket = "{{ s3_bucket }}"
 parameter_overrides = "Stage={{ stage }}"
 
 [default.build.parameters]

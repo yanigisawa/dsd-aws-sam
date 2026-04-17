@@ -2,7 +2,7 @@
 
 import django_simple_deploy
 
-from dsd_aws_lambda.platform_deployer import PlatformDeployer
+from dsd_aws_sam.platform_deployer import PlatformDeployer
 from .plugin_config import plugin_config
 from .cli import PluginCLI, validate_cli
 

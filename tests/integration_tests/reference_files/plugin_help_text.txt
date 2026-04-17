@@ -1,4 +1,4 @@
-Options for dsd-aws-lambda:
+Options for dsd-aws-sam:
   --aws-region AWS_REGION
   --aws-stack-name AWS_STACK_NAME
   --db-engine {sqlite,postgres}

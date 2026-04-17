@@ -14,7 +14,7 @@ The --automate-all flag means the deploy command will:
 - Run `collectstatic` and `migrate` via Lambda invocation.
 """
 
-cancel_aws_lambda = """
+cancel_aws_sam = """
 Okay, cancelling AWS Lambda configuration and deployment.
 """
 

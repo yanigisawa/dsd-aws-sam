@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is **dsd-aws-lambda**, a plugin for [django-simple-deploy](https://github.com/django-simple-deploy/django-simple-deploy) that adds AWS Lambda deployment support. It configures Django projects to deploy as serverless applications using AWS SAM (Serverless Application Model) with Mangum as the ASGI-to-Lambda adapter.
+This is **dsd-aws-sam**, a plugin for [django-simple-deploy](https://github.com/django-simple-deploy/django-simple-deploy) that adds AWS Lambda deployment support. It configures Django projects to deploy as serverless applications using AWS SAM (Serverless Application Model) with Mangum as the ASGI-to-Lambda adapter.
 
 ## Build & Test Commands
 
@@ -16,7 +16,7 @@ pip install -e ".[dev]"
 pytest tests/integration_tests/
 
 # Run a single test
-pytest tests/integration_tests/test_aws_lambda_config.py::test_creates_sam_template
+pytest tests/integration_tests/test_aws_sam_config.py::test_creates_sam_template
 
 # Run e2e tests (requires AWS credentials, SAM CLI, and Docker)
 pytest tests/e2e_tests/
@@ -34,9 +34,9 @@ python -m build
 
 This is a **pluggy-based plugin** for django-simple-deploy. The hook contract is defined by `django_simple_deploy` core:
 
-- `dsd_aws_lambda/__init__.py` — Exports the two required hook implementations: `dsd_get_plugin_config` and `dsd_deploy`
-- `dsd_aws_lambda/deploy.py` — Registers four `@django_simple_deploy.hookimpl` hooks: `dsd_get_plugin_config`, `dsd_get_plugin_cli`, `dsd_validate_cli`, and `dsd_deploy`
-- `dsd_aws_lambda/plugin_config.py` — `PluginConfig` singleton shared with core (exposes `platform_name`, `automate_all_supported`, and plugin-specific CLI values like `aws_region`, `db_engine`, `architecture`, `stage`)
+- `dsd_aws_sam/__init__.py` — Exports the two required hook implementations: `dsd_get_plugin_config` and `dsd_deploy`
+- `dsd_aws_sam/deploy.py` — Registers four `@django_simple_deploy.hookimpl` hooks: `dsd_get_plugin_config`, `dsd_get_plugin_cli`, `dsd_validate_cli`, and `dsd_deploy`
+- `dsd_aws_sam/plugin_config.py` — `PluginConfig` singleton shared with core (exposes `platform_name`, `automate_all_supported`, and plugin-specific CLI values like `aws_region`, `db_engine`, `architecture`, `stage`)
 
 ### Deployment Flow
 
@@ -51,7 +51,7 @@ Two deployment paths exist based on `--db-engine`: `sqlite` (default, ephemeral)
 
 ### Templates
 
-`dsd_aws_lambda/templates/` contains Jinja-style templates processed by `plugin_utils.get_template_string()` from core. These generate the actual deployment files in the user's project.
+`dsd_aws_sam/templates/` contains Jinja-style templates processed by `plugin_utils.get_template_string()` from core. These generate the actual deployment files in the user's project.
 
 ### Test Structure
 

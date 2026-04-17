@@ -24,7 +24,7 @@ def test_deployment(tmp_project, cli_options, request):
 
     it_utils.run_simple_deploy(
         python_cmd,
-        "aws_lambda",
+        "aws_sam",
         automate_all=cli_options.automate_all,
         plugin_args_string=plugin_args,
     )

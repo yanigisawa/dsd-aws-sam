@@ -1,4 +1,4 @@
-# dsd-aws-lambda
+# dsd-aws-sam
 
 An [AWS Lambda](https://aws.amazon.com/lambda/) deployment plugin for [django-simple-deploy](https://github.com/django-simple-deploy/django-simple-deploy). Configures Django projects to deploy as serverless applications using [AWS SAM](https://aws.amazon.com/serverless/sam/) with [Mangum](https://mangum.io/) as the ASGI-to-Lambda adapter.
 
@@ -22,7 +22,7 @@ docker --version
 ## Installation
 
 ```bash
-pip install dsd-aws-lambda
+pip install dsd-aws-sam
 ```
 
 Or for development:
@@ -46,10 +46,10 @@ From your Django project root:
 
 ```bash
 # Configuration only — generates deployment files without deploying
-python manage.py deploy --platform aws_lambda
+python manage.py deploy
 
 # Full deployment — generates files, builds, and deploys to AWS
-python manage.py deploy --platform aws_lambda --automate-all
+python manage.py deploy --automate-all
 ```
 
 If you run without `--automate-all`, deploy manually:
@@ -75,11 +75,11 @@ All options are passed through the `manage.py deploy` command:
 
 ```bash
 # Deploy with PostgreSQL (provisions RDS) in us-west-2
-python manage.py deploy --platform aws_lambda --automate-all \
+python manage.py deploy --automate-all \
     --db-engine postgres --aws-region us-west-2
 
 # Deploy with x86_64 architecture to a custom stack name
-python manage.py deploy --platform aws_lambda --automate-all \
+python manage.py deploy --automate-all \
     --architecture x86_64 --aws-stack-name my-app-production --stage prod
 ```
 
@@ -90,7 +90,7 @@ python manage.py deploy --platform aws_lambda --automate-all \
 Uses Lambda's ephemeral `/tmp` storage. Suitable for demos and stateless apps — data does not persist across Lambda invocations.
 
 ```bash
-python manage.py deploy --platform aws_lambda --automate-all
+python manage.py deploy --automate-all
 ```
 
 ### PostgreSQL
@@ -98,7 +98,7 @@ python manage.py deploy --platform aws_lambda --automate-all
 Provisions a full RDS PostgreSQL instance with supporting VPC infrastructure (private subnets, NAT gateway, security groups). Adds `psycopg2-binary` and `dj-database-url` to your requirements. The database password is stored in AWS Secrets Manager.
 
 ```bash
-python manage.py deploy --platform aws_lambda --automate-all --db-engine postgres
+python manage.py deploy --automate-all --db-engine postgres
 ```
 
 **Note:** The PostgreSQL path creates significantly more AWS resources (VPC, subnets, NAT gateway, RDS instance) and will incur ongoing costs even when idle.

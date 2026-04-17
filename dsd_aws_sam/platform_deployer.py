@@ -29,6 +29,7 @@ class PlatformDeployer:
     def __init__(self):
         self.templates_path = Path(__file__).parent / "templates"
         self.deployed_url = ""
+        self._s3_bucket = f"dsd-aws-sam-{str(uuid4())[:8]}"
 
     # --- Public methods ---
 
@@ -48,6 +49,10 @@ class PlatformDeployer:
         self._modify_settings()
         self._add_requirements()
         self._ensure_asgi()
+
+        self._add_aws_sam_to_gitignore()
+
+        self.get_or_create_s3_bucket(self._s3_bucket)
 
         self._conclude_automate_all()
         self._show_success_message()
@@ -115,6 +120,7 @@ class PlatformDeployer:
             "aws_region": plugin_config.aws_region,
             "stage": plugin_config.stage,
             "db_engine": plugin_config.db_engine,
+            "s3_bucket": self._s3_bucket,
         }
         contents = plugin_utils.get_template_string(template_path, context)
         contents = plugin_utils.remove_doubled_blank_lines(contents)
@@ -345,7 +351,7 @@ class PlatformDeployer:
         if explicit_bucket:
             bucket = explicit_bucket  # Use user-provided
         else:
-            bucket = f"dsd-aws-lambda-{str(uuid4())[:8]}"  # Generate unique bucket name
+            bucket = self._s3_bucket
 
         # Check if bucket exists
         if not self.bucket_exists(bucket):
