@@ -148,7 +148,21 @@ The plugin adds these packages to your project's `requirements.txt`:
 
 Typical recovery flow:
 
+To view detailed deployment errors, check CloudFormation stack events:
+
+```
 aws cloudformation describe-stack-events --stack-name blog-dev --region us-east-1
+```
+
+To rollback the stack to a clean state before redeploying:
+
+```
 sam delete --stack-name blog-dev --region us-east-1
+```
+
+Rebuild and redeploy:
+
+```
 sam build
 sam deploy --stack-name blog-dev --region us-east-1
+```
