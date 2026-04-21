@@ -12,10 +12,22 @@ from tests.integration_tests.utils import manage_sample_project as msp
 pytestmark = pytest.mark.skip_auto_dsd_call
 
 
+@pytest.fixture(autouse=True)
+def _reset_between_tests(tmp_project):
+    """Reset the tmp project before every test in this module.
+
+    Each test here calls `manage.py deploy` with its own CLI args, so state
+    from the previous test (e.g. a generated template.yaml) would otherwise
+    persist and cause `add_file` to hit its overwrite prompt, which silently
+    fails in a subprocess with no TTY.
+    """
+    msp.reset_test_project(tmp_project, "req_txt")
+
+
 def test_db_engine_postgres(tmp_project, request):
     """Test that --db-engine postgres uses the RDS template."""
     cmd = "python manage.py deploy --db-engine postgres"
-    msp.call_deploy(tmp_project, cmd, platform="aws_sam")
+    msp.call_deploy(tmp_project, cmd)
 
     path = tmp_project / "template.yaml"
     contents = path.read_text()
@@ -30,7 +42,7 @@ def test_db_engine_postgres(tmp_project, request):
 def test_architecture_x86(tmp_project, request):
     """Test that --architecture x86_64 is reflected in the SAM template."""
     cmd = "python manage.py deploy --architecture x86_64"
-    msp.call_deploy(tmp_project, cmd, platform="aws_sam")
+    msp.call_deploy(tmp_project, cmd)
 
     path = tmp_project / "template.yaml"
     contents = path.read_text()
@@ -40,7 +52,7 @@ def test_architecture_x86(tmp_project, request):
 def test_stage_prod(tmp_project, request):
     """Test that --stage prod is reflected in config files."""
     cmd = "python manage.py deploy --stage prod"
-    msp.call_deploy(tmp_project, cmd, platform="aws_sam")
+    msp.call_deploy(tmp_project, cmd)
 
     samconfig_path = tmp_project / "samconfig.toml"
     contents = samconfig_path.read_text()

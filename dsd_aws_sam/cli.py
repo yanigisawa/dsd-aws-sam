@@ -30,7 +30,7 @@ class PluginCLI:
             "--aws-region",
             type=str,
             help="AWS region for deployment (default: auto-detect or us-east-1).",
-            default="",
+            default="us-east-1",
         )
 
         plugin_group.add_argument(

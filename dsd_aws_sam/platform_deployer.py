@@ -18,6 +18,20 @@ from django_simple_deploy.management.commands.utils.command_errors import (
 )
 
 
+# Centralized runtime dependency pins for configured projects.
+# Update these values intentionally when validating a new known-good set.
+LAMBDA_RUNTIME_DEPENDENCY_VERSIONS = {
+    "mangum": "0.21.0",
+    "django-storages": "1.14.4",
+    "boto3": "1.35.93",
+}
+
+POSTGRES_RUNTIME_DEPENDENCY_VERSIONS = {
+    "psycopg2-binary": "2.9.10",
+    "dj-database-url": "2.3.0",
+}
+
+
 class PlatformDeployer:
     """Perform the initial deployment to AWS Lambda.
 
@@ -50,7 +64,7 @@ class PlatformDeployer:
         self._add_requirements()
         self._ensure_asgi()
 
-        self._add_aws_sam_to_gitignore()
+        # self._add_aws_sam_to_gitignore()
 
         self.get_or_create_s3_bucket(self._s3_bucket)
 
@@ -123,7 +137,6 @@ class PlatformDeployer:
             "s3_bucket": self._s3_bucket,
         }
         contents = plugin_utils.get_template_string(template_path, context)
-        contents = plugin_utils.remove_doubled_blank_lines(contents)
         path = dsd_config.project_root / "samconfig.toml"
         plugin_utils.add_file(path, contents)
 
@@ -148,10 +161,12 @@ class PlatformDeployer:
 
     def _add_requirements(self):
         """Add requirements for deploying to AWS Lambda."""
-        requirements = ["mangum", "django-storages", "boto3"]
+        requirements = dict(LAMBDA_RUNTIME_DEPENDENCY_VERSIONS)
         if plugin_config.db_engine == "postgres":
-            requirements.extend(["psycopg2-binary", "dj-database-url"])
-        plugin_utils.add_packages(requirements)
+            requirements.update(POSTGRES_RUNTIME_DEPENDENCY_VERSIONS)
+
+        for package_name, version in requirements.items():
+            plugin_utils.add_package(package_name, version=f"=={version}")
 
     def _ensure_asgi(self):
         """Ensure the project has an ASGI application module.
@@ -269,12 +284,12 @@ class PlatformDeployer:
     # --- Helper methods for _validate_platform() ---
 
     def _check_lambda_settings(self):
-        """Check to see if an AWS Lambda settings block already exists."""
-        start_line = "# AWS Lambda settings."
+        """Check to see if an AWS SAM settings block already exists."""
+        start_line = "# AWS SAM settings."
         plugin_utils.check_settings(
-            "AWS Lambda",
+            "AWS SAM",
             start_line,
-            platform_msgs.lambda_settings_found,
+            platform_msgs.sam_settings_found,
             platform_msgs.cant_overwrite_settings,
         )
 

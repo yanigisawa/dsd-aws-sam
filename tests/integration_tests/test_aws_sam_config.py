@@ -12,7 +12,7 @@ from tests.integration_tests.utils import it_helper_functions as hf
 
 
 def test_settings(tmp_project):
-    """Verify there's an AWS Lambda-specific settings section."""
+    """Verify there's an AWS SAM-specific settings section."""
     hf.check_reference_file(tmp_project, "blog/settings.py", "dsd-aws-sam")
 
 
@@ -25,13 +25,14 @@ def test_requirements_txt(tmp_project, pkg_manager, tmp_path, dsd_version):
             "requirements.txt",
             "dsd-aws-sam",
             context=context,
+            tmp_path=tmp_path,
         )
     elif pkg_manager in ("poetry", "pipenv"):
         # requirements.txt should not exist for poetry/pipenv.
         assert not Path(tmp_project / "requirements.txt").exists()
 
 
-def test_pyproject_toml(tmp_project, pkg_manager, dsd_version):
+def test_pyproject_toml(tmp_project, pkg_manager, tmp_path, dsd_version):
     """Verify requirements added to pyproject.toml for Poetry."""
     if pkg_manager == "poetry":
         context = {"current-version": dsd_version}
@@ -40,12 +41,13 @@ def test_pyproject_toml(tmp_project, pkg_manager, dsd_version):
             "pyproject.toml",
             "dsd-aws-sam",
             context=context,
+            tmp_path=tmp_path,
         )
     elif pkg_manager == "req_txt":
         pytest.skip("Not relevant for requirements.txt projects.")
 
 
-def test_pipfile(tmp_project, pkg_manager, dsd_version):
+def test_pipfile(tmp_project, pkg_manager, tmp_path, dsd_version):
     """Verify requirements added to Pipfile for Pipenv."""
     if pkg_manager == "pipenv":
         context = {"current-version": dsd_version}
@@ -54,6 +56,7 @@ def test_pipfile(tmp_project, pkg_manager, dsd_version):
             "Pipfile",
             "dsd-aws-sam",
             context=context,
+            tmp_path=tmp_path,
         )
     elif pkg_manager == "req_txt":
         pytest.skip("Not relevant for requirements.txt projects.")

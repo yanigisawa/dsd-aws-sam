@@ -21,7 +21,7 @@ class PluginConfig:
         self.platform_name = "AWS SAM"
 
         # Values from plugin CLI args.
-        self.aws_region = None
+        self.aws_region = "us-east-1"
         self.aws_stack_name = None
         self.db_engine = "sqlite"
         self.architecture = "arm64"

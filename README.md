@@ -144,6 +144,14 @@ The plugin adds these packages to your project's `requirements.txt`:
 - **psycopg2-binary** — PostgreSQL adapter (postgres only)
 - **dj-database-url** — `DATABASE_URL` parser (postgres only)
 
+## Development
+
+Use this command to avoid generating all local .pyc files during development:
+
+```bash
+export PYTHONDONTWRITEBYTECODE=1
+```
+
 ## Troubleshooting
 
 Typical recovery flow:

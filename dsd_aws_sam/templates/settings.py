@@ -1,9 +1,9 @@
 {{ current_settings }}
 
-# AWS Lambda settings.
+# AWS SAM settings.
 import os
 
-if os.environ.get("ON_AWS_LAMBDA"):
+if os.environ.get("ON_AWS_SAM"):
     # Debug setting from environment variable.
     DEBUG = os.environ.get("DEBUG", "False").lower() in ("true", "1")
 

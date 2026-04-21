@@ -1,4 +1,4 @@
-"""A collection of messages used in the AWS Lambda deployment plugin."""
+"""A collection of messages used in the AWS SAM deployment plugin."""
 
 from textwrap import dedent
 
@@ -7,7 +7,7 @@ confirm_automate_all = """
 The --automate-all flag means the deploy command will:
 - Verify your AWS CLI and SAM CLI are configured.
 - Create an S3 bucket for static files.
-- Configure your project for deployment on AWS Lambda.
+- Configure your project for deployment via AWS SAM.
 - Commit all changes to your project that are necessary for deployment.
 - Run `sam build` to package your Lambda function.
 - Run `sam deploy` to create your CloudFormation stack.
@@ -15,11 +15,11 @@ The --automate-all flag means the deploy command will:
 """
 
 cancel_aws_sam = """
-Okay, cancelling AWS Lambda configuration and deployment.
+Okay, cancelling AWS SAM configuration and deployment.
 """
 
 aws_cli_not_installed = """
-In order to deploy to AWS Lambda, you need to install the AWS CLI.
+In order to deploy to AWS SAM, you need to install the AWS CLI.
   See here: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 After installing the CLI, configure it with `aws configure` and then run
 the deploy command again.
@@ -33,7 +33,7 @@ Then run the deploy command again.
 """
 
 sam_cli_not_installed = """
-In order to deploy to AWS Lambda, you need to install the AWS SAM CLI.
+In order to deploy via AWS SAM, you need to install the AWS SAM CLI.
   See here: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
 After installing the SAM CLI, run the deploy command again.
 """
@@ -48,14 +48,14 @@ may produce incompatible binaries for native dependencies.
 You can install Docker from: https://docs.docker.com/get-docker/
 """
 
-lambda_settings_found = """
-There is already an AWS Lambda-specific settings block in settings.py. Is it okay to
+sam_settings_found = """
+There is already an AWS SAM-specific settings block in settings.py. Is it okay to
 overwrite this block, and everything that follows in settings.py?
 """
 
 cant_overwrite_settings = """
-In order to configure the project for deployment, we need to write an AWS Lambda-specific
-settings block. Please remove the current AWS Lambda-specific settings, and then run
+In order to configure the project for deployment, we need to write an AWS SAM-specific
+settings block. Please remove the current AWS SAM-specific settings, and then run
 the deploy command again.
 """
 
@@ -84,7 +84,7 @@ the CloudFormation console for detailed stack events.
 """
 
 sqlite_warning = """
-Note: You are deploying with SQLite (the default). On AWS Lambda, the filesystem
+Note: You are deploying with SQLite (the default). On AWS SAM / Lambda, the filesystem
 is ephemeral -- data stored in SQLite will NOT persist across Lambda cold starts.
 
 SQLite mode is suitable for demos and initial testing only.
