@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -20,12 +21,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-j+*1=he4!%=(-3g^$hj=1pkmzkbdjm0-h2%yd-=1sf%trwun_-"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-j+*1=he4!%=(-3g^$hj=1pkmzkbdjm0-h2%yd-=1sf%trwun_-")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DEBUG", "True").lower() in ("true", "1")
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",") if os.environ.get("ALLOWED_HOSTS") else []
 
 
 # Application definition
@@ -122,7 +123,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.1/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = f"https://{os.environ['STATIC_FILES_BUCKET']}.s3.amazonaws.com/static/" if os.environ.get("STATIC_FILES_BUCKET") else "static/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
@@ -132,54 +133,39 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # My settings.
 LOGIN_URL = "users:login"
 
-
 # AWS SAM settings.
-import os
+CSRF_TRUSTED_ORIGINS = (
+    os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if os.environ.get("CSRF_TRUSTED_ORIGINS")
+    else []
+)
 
-if os.environ.get("ON_AWS_SAM"):
-    # Debug setting from environment variable.
-    DEBUG = os.environ.get("DEBUG", "False").lower() in ("true", "1")
+AWS_STORAGE_BUCKET_NAME = os.environ.get("STATIC_FILES_BUCKET", "")
+AWS_S3_REGION_NAME = os.environ.get("AWS_REGION", "us-east-1")
+AWS_DEFAULT_ACL = None
+STORAGES = (
+    {"staticfiles": {"BACKEND": "storages.backends.s3boto3.S3StaticStorage"}}
+    if AWS_STORAGE_BUCKET_NAME
+    else {"staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}}
+)
 
-    # Read SECRET_KEY from environment (set via Secrets Manager in SAM template).
-    SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", SECRET_KEY)
-
-    # Allow all hosts -- API Gateway handles domain routing.
-    ALLOWED_HOSTS = ["*"]
-
-    # CSRF trusted origins for API Gateway.
-    # Update this if you add a custom domain.
-    CSRF_TRUSTED_ORIGINS = [
-        "https://*.execute-api.us-east-1.amazonaws.com",
-    ]
-
-    # Static files on S3.
-    STORAGES = {
-        "staticfiles": {
-            "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+# CloudWatch-compatible logging.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "[%(levelname)s] %(name)s: %(message)s",
         },
-    }
-    AWS_STORAGE_BUCKET_NAME = os.environ.get("STATIC_FILES_BUCKET", "")
-    AWS_S3_REGION_NAME = os.environ.get("AWS_REGION", "us-east-1")
-    AWS_DEFAULT_ACL = None
-    STATIC_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/static/"
-
-    # CloudWatch-compatible logging.
-    LOGGING = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "standard": {
-                "format": "[%(levelname)s] %(name)s: %(message)s",
-            },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
         },
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "formatter": "standard",
-            },
-        },
-        "root": {
-            "handlers": ["console"],
-            "level": "INFO",
-        },
-    }
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+}

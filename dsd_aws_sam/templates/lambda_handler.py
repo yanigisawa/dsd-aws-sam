@@ -23,8 +23,9 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "{{ django_project_name }}.setti
 # Import Django's ASGI application.
 from {{ django_project_name }}.asgi import application
 
-# Create the Mangum handler for ASGI.
-# api_gateway_base_path: strip the stage prefix from the URL path.
+# Create the Mangum handler for ASGI. The SAM template deploys HTTP API with the
+# reserved $default stage, so request paths arrive without a stage prefix and
+# Mangum can pass them straight through to Django.
 mangum_handler = Mangum(application, lifespan="off")
 
 

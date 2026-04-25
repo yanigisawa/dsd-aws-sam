@@ -4,6 +4,8 @@ Uses Mangum as the ASGI-to-Lambda adapter and AWS SAM as the deployment tooling.
 """
 
 import json
+import os
+import re
 import shlex
 from pathlib import Path
 from uuid import uuid4
@@ -151,13 +153,233 @@ class PlatformDeployer:
             plugin_utils.write_output(f"    Added {placeholder}")
 
     def _modify_settings(self):
-        """Add AWS Lambda-specific settings."""
-        template_path = self.templates_path / "settings.py"
+        """Configure the active Django settings module for AWS Lambda.
+
+        Two strategies based on the layout detected in the target file:
+
+        - **Stock path:** the file is an unmodified `django-admin startproject`
+          settings.py. Rewrite SECRET_KEY, DEBUG, ALLOWED_HOSTS and STATIC_URL
+          in place to read from env vars set by the SAM template, and append
+          Lambda-specific settings (STORAGES, LOGGING, CSRF_TRUSTED_ORIGINS,
+          plus a Postgres DATABASE_URL override when applicable).
+
+        - **Sidecar path:** the file has been customized (cookiecutter-django,
+          django-environ, split settings). Generate an `aws_sam_settings.py`
+          module next to it and append a single `from .aws_sam_settings
+          import *` line. User-authored assignments are never rewritten.
+
+        The target file is resolved from DJANGO_SETTINGS_MODULE (the canonical
+        Django way to point at the active settings module), falling back to
+        the module declared in manage.py and, as a last resort, to whatever
+        dsd core populated into `dsd_config.settings_path`.
+        """
+        settings_path = self._resolve_settings_target()
+        text = settings_path.read_text()
+
+        if self._is_stock_layout(text):
+            self._apply_stock_strategy(settings_path, text)
+        else:
+            self._apply_sidecar_strategy(settings_path)
+
+    def _resolve_settings_target(self):
+        """Return the Path of the active Django settings module.
+
+        Resolution order:
+          1. DJANGO_SETTINGS_MODULE env var (Django's canonical pointer).
+          2. The `os.environ.setdefault("DJANGO_SETTINGS_MODULE", ...)` value
+             declared in manage.py.
+          3. `dsd_config.settings_path` (what dsd core already found).
+        """
+        for candidate_mod in (
+            os.environ.get("DJANGO_SETTINGS_MODULE"),
+            self._parse_settings_module_from_manage_py(),
+        ):
+            if not candidate_mod:
+                continue
+            rel = candidate_mod.replace(".", "/") + ".py"
+            candidate = dsd_config.project_root / rel
+            if candidate.exists():
+                return candidate
+
+        return dsd_config.settings_path
+
+    def _parse_settings_module_from_manage_py(self):
+        """Pull DJANGO_SETTINGS_MODULE out of the project's manage.py, if present."""
+        manage_py = dsd_config.project_root / "manage.py"
+        if not manage_py.exists():
+            return None
+        m = re.search(
+            r"""os\.environ\.setdefault\(\s*["']DJANGO_SETTINGS_MODULE["']\s*,\s*["']([^"']+)["']""",
+            manage_py.read_text(),
+        )
+        return m.group(1) if m else None
+
+    def _is_stock_layout(self, text):
+        """Return True when the settings file matches stock django-admin output.
+
+        The three canonical markers (SECRET_KEY with a django-insecure value,
+        `DEBUG = True`, and `ALLOWED_HOSTS = []`) all being present is a
+        strong signal that the surgical-regex strategy will succeed.
+        """
+        markers = (
+            r'^SECRET_KEY = "django-insecure-[^"\n]+"$',
+            r"^DEBUG = True$",
+            r"^ALLOWED_HOSTS = \[\]$",
+        )
+        return all(re.search(p, text, re.MULTILINE) for p in markers)
+
+    def _apply_stock_strategy(self, settings_path, text):
+        """Surgical-regex rewrites plus an appended Lambda settings block."""
+        text = self._ensure_import_os(text)
+        text = self._rewrite_existing_settings_lines(text)
+        text += self._build_lambda_settings_block()
+        plugin_utils.modify_file(settings_path, text)
+
+    def _apply_sidecar_strategy(self, settings_path):
+        """Write aws_sam_settings.py alongside the target and import it.
+
+        Leaves user-authored lines in the target file untouched; the sidecar
+        module's env-var-gated assignments activate only when the SAM runtime
+        has populated the relevant env vars.
+        """
+        template_path = self.templates_path / "aws_sam_settings.py"
         context = {
             "aws_region": plugin_config.aws_region,
             "db_engine": plugin_config.db_engine,
         }
-        plugin_utils.modify_settings_file(template_path, context)
+        contents = plugin_utils.get_template_string(template_path, context)
+        sidecar_path = settings_path.parent / "aws_sam_settings.py"
+        plugin_utils.add_file(sidecar_path, contents)
+
+        import_line = "from .aws_sam_settings import *"
+        text = settings_path.read_text()
+        if import_line in text:
+            plugin_utils.write_output(
+                f"  Sidecar import already present in {settings_path.as_posix()}; skipping."
+            )
+            return
+
+        if not text.endswith("\n"):
+            text += "\n"
+        text += f"\n# AWS SAM settings.\n{import_line}\n"
+        plugin_utils.modify_file(settings_path, text)
+
+    def _ensure_import_os(self, text):
+        """Add `import os` to settings.py if missing."""
+        if re.search(r"^import os$", text, re.MULTILINE):
+            return text
+        return re.sub(
+            r"^from pathlib import Path$",
+            "import os\nfrom pathlib import Path",
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+
+    def _rewrite_existing_settings_lines(self, text):
+        """Replace stock Django-generated settings lines with env-driven forms.
+
+        Each replacement is idempotent: on re-run, the original pattern no
+        longer matches, so the line is left as-is.
+        """
+        # SECRET_KEY -- read from env, fall back to the existing key.
+        text = re.sub(
+            r'^SECRET_KEY = ("django-insecure-[^"\n]+")$',
+            r'SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", \1)',
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+
+        # DEBUG -- read from env, default True to preserve local dev behavior.
+        text = re.sub(
+            r"^DEBUG = True$",
+            'DEBUG = os.environ.get("DEBUG", "True").lower() in ("true", "1")',
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+
+        # ALLOWED_HOSTS -- split a comma-separated env var; empty locally.
+        text = re.sub(
+            r"^ALLOWED_HOSTS = \[\]$",
+            'ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",") if os.environ.get("ALLOWED_HOSTS") else []',
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+
+        # STATIC_URL -- serve from S3 when the bucket env var is set.
+        text = re.sub(
+            r'^STATIC_URL = "static/"$',
+            'STATIC_URL = f"https://{os.environ[\'STATIC_FILES_BUCKET\']}.s3.amazonaws.com/static/" if os.environ.get("STATIC_FILES_BUCKET") else "static/"',
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        return text
+
+    def _build_lambda_settings_block(self):
+        """Build the Lambda-specific settings appended to the end of settings.py.
+
+        Each value is env-var-driven so local dev keeps working unchanged when
+        the relevant env vars are absent.
+        """
+        aws_region = plugin_config.aws_region
+        lines = [
+            "",
+            "# AWS SAM settings.",
+            "CSRF_TRUSTED_ORIGINS = (",
+            '    os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")',
+            '    if os.environ.get("CSRF_TRUSTED_ORIGINS")',
+            "    else []",
+            ")",
+            "",
+            'AWS_STORAGE_BUCKET_NAME = os.environ.get("STATIC_FILES_BUCKET", "")',
+            f'AWS_S3_REGION_NAME = os.environ.get("AWS_REGION", "{aws_region}")',
+            "AWS_DEFAULT_ACL = None",
+            "STORAGES = (",
+            '    {"staticfiles": {"BACKEND": "storages.backends.s3boto3.S3StaticStorage"}}',
+            "    if AWS_STORAGE_BUCKET_NAME",
+            '    else {"staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}}',
+            ")",
+            "",
+            "# CloudWatch-compatible logging.",
+            "LOGGING = {",
+            '    "version": 1,',
+            '    "disable_existing_loggers": False,',
+            '    "formatters": {',
+            '        "standard": {',
+            '            "format": "[%(levelname)s] %(name)s: %(message)s",',
+            "        },",
+            "    },",
+            '    "handlers": {',
+            '        "console": {',
+            '            "class": "logging.StreamHandler",',
+            '            "formatter": "standard",',
+            "        },",
+            "    },",
+            '    "root": {',
+            '        "handlers": ["console"],',
+            '        "level": "INFO",',
+            "    },",
+            "}",
+        ]
+
+        if plugin_config.db_engine == "postgres":
+            # dj_database_url is pinned in POSTGRES_RUNTIME_DEPENDENCY_VERSIONS,
+            # so the import is safe at module load time for postgres deploys.
+            lines += [
+                "",
+                "import dj_database_url",
+                "",
+                '_database_url = os.environ.get("DATABASE_URL")',
+                'DATABASES["default"] = (',
+                "    dj_database_url.parse(_database_url) if _database_url else DATABASES[\"default\"]",
+                ")",
+            ]
+
+        return "\n".join(lines) + "\n"
 
     def _add_requirements(self):
         """Add requirements for deploying to AWS Lambda."""

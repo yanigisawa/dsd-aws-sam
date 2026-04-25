@@ -206,11 +206,11 @@ Resources:
           - !Ref PrivateSubnetB
       Environment:
         Variables:
-          ON_AWS_LAMBDA: "1"
           DEBUG: "False"
           DJANGO_SECRET_KEY: !Sub "{% templatetag openvariable %}resolve:secretsmanager:${DjangoSecretKey}{% templatetag closevariable %}"
           STATIC_FILES_BUCKET: !Ref StaticFilesBucket
-          AWS_REGION: !Ref "AWS::Region"
+          ALLOWED_HOSTS: !Sub ".execute-api.${AWS::Region}.amazonaws.com"
+          CSRF_TRUSTED_ORIGINS: !Sub "https://*.execute-api.${AWS::Region}.amazonaws.com"
           DATABASE_URL: !Sub
             - "postgres://${DBUsername}:{% templatetag openvariable %}resolve:secretsmanager:${DBPassword}{% templatetag closevariable %}@${DBHost}:5432/${DBName}"
             - DBHost: !GetAtt RDSInstance.Endpoint.Address
@@ -231,7 +231,12 @@ Resources:
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
-      StageName: !Ref Stage
+      # Use the reserved $default stage so API Gateway does not prepend a stage
+      # segment (e.g. "/dev") to the request path. Django then receives requests
+      # at the paths declared in its URLconf, and reverse()/"url" output
+      # stays correct. Per-environment isolation is handled by deploying to
+      # separate stacks/APIs, not by distinct stage names on a shared API.
+      StageName: "$default"
       CorsConfiguration:
         AllowOrigins:
           - !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
@@ -280,7 +285,7 @@ Resources:
 Outputs:
   ApiUrl:
     Description: "API Gateway endpoint URL"
-    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
   FunctionName:
     Description: "Lambda function name (for management commands)"
     Value: !Ref DjangoFunction
