@@ -34,32 +34,32 @@ def test_requirements_txt(tmp_project, pkg_manager, tmp_path, dsd_version):
 
 def test_pyproject_toml(tmp_project, pkg_manager, tmp_path, dsd_version):
     """Verify requirements added to pyproject.toml for Poetry."""
-    if pkg_manager == "poetry":
-        context = {"current-version": dsd_version}
-        hf.check_reference_file(
-            tmp_project,
-            "pyproject.toml",
-            "dsd-aws-sam",
-            context=context,
-            tmp_path=tmp_path,
-        )
-    elif pkg_manager == "req_txt":
-        pytest.skip("Not relevant for requirements.txt projects.")
+    if pkg_manager != "poetry":
+        pytest.skip(f"pyproject.toml is only used for Poetry projects. Used Package manager: {pkg_manager}")
+
+    context = {"current-version": dsd_version}
+    hf.check_reference_file(
+        tmp_project,
+        "pyproject.toml",
+        "dsd-aws-sam",
+        context=context,
+        tmp_path=tmp_path,
+    )
 
 
 def test_pipfile(tmp_project, pkg_manager, tmp_path, dsd_version):
     """Verify requirements added to Pipfile for Pipenv."""
-    if pkg_manager == "pipenv":
-        context = {"current-version": dsd_version}
-        hf.check_reference_file(
-            tmp_project,
-            "Pipfile",
-            "dsd-aws-sam",
-            context=context,
-            tmp_path=tmp_path,
-        )
-    elif pkg_manager == "req_txt":
-        pytest.skip("Not relevant for requirements.txt projects.")
+    if pkg_manager != "pipenv":
+        pytest.skip(f"Pipfile is only used for Pipenv projects. Used Package manager: {pkg_manager}")
+
+    context = {"current-version": dsd_version}
+    hf.check_reference_file(
+        tmp_project,
+        "Pipfile",
+        "dsd-aws-sam",
+        context=context,
+        tmp_path=tmp_path,
+    )
 
 
 def test_creates_lambda_handler(tmp_project):
