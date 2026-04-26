@@ -3,6 +3,8 @@
 import tomllib
 from pathlib import Path
 from time import sleep
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 import pytest
 
@@ -15,6 +17,29 @@ def pytest_configure(config):
         "markers",
         "skip_auto_dsd_call: skip the automatic `manage.py deploy` call for a test module",
     )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_s3_buckets():
+    """Delete any S3 buckets the test session created in AWS.
+
+    Only buckets prefixed with `dsd-aws-sam-test-` are touched — by
+    construction in PlatformDeployer.__init__, real deployments never use that
+    prefix, so this can never delete a developer's deployed-app artifacts.
+    Silently no-ops when AWS credentials are not configured.
+    """
+    yield
+
+    try:
+        s3 = boto3.resource("s3")
+        for bucket in s3.buckets.all():
+            if not bucket.name.startswith("dsd-aws-sam-test-"):
+                continue
+            bucket.object_versions.delete()
+            bucket.objects.all().delete()
+            bucket.delete()
+    except (NoCredentialsError, ClientError, BotoCoreError):
+        return
 
 
 @pytest.fixture(scope="session")

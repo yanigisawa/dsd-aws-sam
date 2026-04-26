@@ -16,7 +16,7 @@ from django_simple_deploy.management.commands.utils.command_errors import (
 )
 
 
-S3_BUCKET_RE = re.compile(r"^dsd-aws-sam-[0-9a-f]{8}$")
+S3_BUCKET_RE = re.compile(r"^dsd-aws-sam-test-[0-9a-f]{8}$")
 
 
 class TestInit:

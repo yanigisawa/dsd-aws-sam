@@ -45,7 +45,10 @@ class PlatformDeployer:
     def __init__(self):
         self.templates_path = Path(__file__).parent / "templates"
         self.deployed_url = ""
-        self._s3_bucket = f"dsd-aws-sam-{str(uuid4())[:8]}"
+        # Test buckets get a distinct prefix so the integration-test teardown
+        # can target them without ever touching real deployment artifacts.
+        prefix = "dsd-aws-sam-test" if dsd_config.unit_testing else "dsd-aws-sam"
+        self._s3_bucket = f"{prefix}-{str(uuid4())[:8]}"
 
     # --- Public methods ---
 
@@ -68,7 +71,8 @@ class PlatformDeployer:
 
         # self._add_aws_sam_to_gitignore()
 
-        self.get_or_create_s3_bucket(self._s3_bucket)
+        if not dsd_config.unit_testing:
+            self.get_or_create_s3_bucket(self._s3_bucket)
 
         self._conclude_automate_all()
         self._show_success_message()

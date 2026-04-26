@@ -21,7 +21,6 @@ optional = true
 
 [tool.poetry.group.deploy.dependencies]
 django-simple-deploy = "=={current-version}"
-gunicorn = "*"
-psycopg2-binary = "*"
-dj-database-url = "*"
-whitenoise = "*"
+mangum = "==0.21.0"
+django-storages = "==1.14.4"
+boto3 = "==1.35.93"
