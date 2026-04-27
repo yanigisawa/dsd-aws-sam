@@ -2,6 +2,11 @@
 
 An [AWS Lambda](https://aws.amazon.com/lambda/) deployment plugin for [django-simple-deploy](https://github.com/django-simple-deploy/django-simple-deploy). Configures Django projects to deploy as serverless applications using [AWS SAM](https://aws.amazon.com/serverless/sam/) with [Mangum](https://mangum.io/) as the ASGI-to-Lambda adapter.
 
+> **Project status (alpha):**
+> - Not published to PyPI — install from GitHub (see [Installation](#installation)).
+> - The default **SQLite** deployment is **read-only** at runtime. Lambda's filesystem is read-only, so any Django write (admin, ORM `.save()`, migrations against the deployed DB, etc.) will raise an error. Suitable only for demos that read pre-populated data.
+> - The **PostgreSQL / RDS** path is **experimental** — the template is in place but has not been tested end-to-end.
+
 ## Prerequisites
 
 - Python 3.10+
@@ -21,11 +26,15 @@ docker --version
 
 ## Installation
 
+> **Status:** This plugin is in alpha and is **not yet published to PyPI**. Install directly from GitHub.
+
+Install the latest version from GitHub:
+
 ```bash
-pip install dsd-aws-sam
+pip install git+https://github.com/django-simple-deploy/dsd-aws-sam.git
 ```
 
-Or for development:
+Or for development (clone the repo first, then from the project root):
 
 ```bash
 pip install -e ".[dev]"
@@ -85,15 +94,22 @@ python manage.py deploy --automate-all \
 
 ## Database Options
 
-### SQLite (default)
+### SQLite (default) — read-only
 
-Uses Lambda's ephemeral `/tmp` storage. Suitable for demos and stateless apps — data does not persist across Lambda invocations.
+The SQLite database file is bundled into the Lambda deployment package. Lambda's filesystem is **read-only** at runtime (only `/tmp` is writable, and this plugin does not relocate the SQLite file there), so:
+
+- **Reads work.** Any view that only queries the database will function.
+- **Writes fail.** Any attempt to write — admin edits, `Model.save()`, form submissions, running `migrate` against the deployed DB — will raise a Django database write error.
+
+This makes the SQLite path suitable only for demos serving pre-populated, read-only content. For any app that writes to the database, use `--db-engine postgres` (currently experimental — see below) or wait for a future release that copies the SQLite file to `/tmp` on cold start.
 
 ```bash
 python manage.py deploy --automate-all
 ```
 
-### PostgreSQL
+### PostgreSQL — experimental, not yet end-to-end tested
+
+> **Warning:** The RDS / PostgreSQL deployment path has **not been tested end-to-end** by the maintainer. The CloudFormation template is in place and should work in theory, but expect rough edges. Please file issues if you try it.
 
 Provisions a full RDS PostgreSQL instance with supporting VPC infrastructure (private subnets, NAT gateway, security groups). Adds `psycopg2-binary` and `dj-database-url` to your requirements. The database password is stored in AWS Secrets Manager.
 
@@ -134,6 +150,30 @@ aws lambda invoke --function-name <function-name> \
     --payload '{"manage": "migrate"}' output.json
 ```
 
+## Tearing Down the Deployment
+
+When you're done with a deployed stack, you can delete **all** AWS resources created by the plugin (Lambda, API Gateway, S3 bucket, Secrets Manager entry, and — for the postgres path — the VPC, subnets, NAT gateway, and RDS instance) in one of two ways.
+
+### Option 1: `sam delete` (recommended)
+
+From the project root:
+
+```bash
+sam delete --stack-name <stack-name> --region <region>
+```
+
+Use the stack name and region you deployed with (defaults: `<project>-<stage>` and your configured AWS region). SAM will prompt for confirmation and then delete the CloudFormation stack and all its resources.
+
+### Option 2: Delete the stack from the AWS Console
+
+1. Open the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation/) in the region you deployed to.
+2. Find the stack matching your `--aws-stack-name` (default `<project>-<stage>`).
+3. Select it and click **Delete**.
+
+Both options remove the entire deployed project. The S3 static-files bucket must be empty before the stack will delete cleanly; if deletion stalls on the bucket, empty it from the S3 console and retry.
+
+> **Note:** The PostgreSQL path may also leave behind RDS automated snapshots depending on your account settings — check the RDS console if you want a truly clean teardown.
+
 ## Package Dependencies Added
 
 The plugin adds these packages to your project's `requirements.txt`:
@@ -154,21 +194,13 @@ export PYTHONDONTWRITEBYTECODE=1
 
 ## Troubleshooting
 
-Typical recovery flow:
-
 To view detailed deployment errors, check CloudFormation stack events:
 
 ```
 aws cloudformation describe-stack-events --stack-name blog-dev --region us-east-1
 ```
 
-To rollback the stack to a clean state before redeploying:
-
-```
-sam delete --stack-name blog-dev --region us-east-1
-```
-
-Rebuild and redeploy:
+If a deployment is wedged and won't recover, tear the stack down (see [Tearing Down the Deployment](#tearing-down-the-deployment)) and redeploy:
 
 ```
 sam build
